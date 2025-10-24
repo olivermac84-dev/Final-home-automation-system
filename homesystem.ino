@@ -1,153 +1,165 @@
 #include <IRremote.h>
 
-#define IR_PIN 11
+#define IR_RECEIVE_PIN 11
 #define MOTION_PIN 2
 #define LDR_PIN A0
-#define MODE_BUTTON 8
-#define BUZZER 9
-#define SYS_LED 10
-#define GREEN_LED 12
-#define YELLOW_LED 13
-#define MOTION_LED 14 // Motion detection indicator LED
+#define BUTTON_PIN 8
+#define BUZZER_PIN 9
 
-#define LED1 3  // Dining
-#define LED2 4
-#define LED3 5
-#define LED4 6
-#define LED5 7
+#define SYSTEM_LED 10
+#define AUTO_LED 12
+#define MANUAL_LED 13
+#define MOTION_LED A1
 
-IRrecv irrecv(IR_PIN);
-decode_results results;
+// Room LEDs (you can connect later)
+#define LED_ROOM1 3
+#define LED_ROOM2 4
+#define LED_ROOM3 5
+#define LED_ROOM4 6
+#define LED_DINING 7
 
-// System states
+// Remote button codes (change if needed)
+#define REMOTE_ROOM1 0xFF30CF
+#define REMOTE_ROOM2 0xFF18E7
+#define REMOTE_ROOM3 0xFF7A85
+#define REMOTE_ROOM4 0xFF10EF
+#define REMOTE_DINING 0xFF38C7
+#define REMOTE_MODE 0xFF5AA5
+
 bool autoMode = true;
-bool diningOffLast = false;
-bool sysLedState = false;
-bool buttonPrev = HIGH;
-bool isNight = false;
-unsigned long lastBlink = 0;
-unsigned long lastMotion = 0;
+bool motionDetected = false;
+bool lightsOn = false;
+unsigned long lastMotionTime = 0;
+bool diningOff = false;
+bool prevButtonState = HIGH;
 
 void setup() {
   Serial.begin(9600);
-  irrecv.enableIRIn();
+  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
 
   pinMode(MOTION_PIN, INPUT);
-  pinMode(MODE_BUTTON, INPUT_PULLUP);
-  pinMode(LDR_PIN, INPUT);
-  pinMode(BUZZER, OUTPUT);
-  pinMode(SYS_LED, OUTPUT);
-  pinMode(GREEN_LED, OUTPUT);
-  pinMode(YELLOW_LED, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(SYSTEM_LED, OUTPUT);
+  pinMode(AUTO_LED, OUTPUT);
+  pinMode(MANUAL_LED, OUTPUT);
   pinMode(MOTION_LED, OUTPUT);
 
-  pinMode(LED1, OUTPUT);
-  pinMode(LED2, OUTPUT);
-  pinMode(LED3, OUTPUT);
-  pinMode(LED4, OUTPUT);
-  pinMode(LED5, OUTPUT);
+  pinMode(LED_ROOM1, OUTPUT);
+  pinMode(LED_ROOM2, OUTPUT);
+  pinMode(LED_ROOM3, OUTPUT);
+  pinMode(LED_ROOM4, OUTPUT);
+  pinMode(LED_DINING, OUTPUT);
 
-  // Initial day/night check
-  int lightValue = analogRead(LDR_PIN);
-  isNight = lightValue < 500;
-  autoMode = isNight;
-  updateModeLEDs();
-
-  // System power ON beep
-  beep(2, 100);
+  allLightsOff();
+  digitalWrite(AUTO_LED, HIGH);
+  digitalWrite(MANUAL_LED, LOW);
+  beep(2, 100); // startup
 }
 
 void loop() {
-  // System LED blink
-  if (millis() - lastBlink >= 500) {
-    sysLedState = !sysLedState;
-    digitalWrite(SYS_LED, sysLedState);
+  // Blink system LED
+  static unsigned long lastBlink = 0;
+  if (millis() - lastBlink > 500) {
+    digitalWrite(SYSTEM_LED, !digitalRead(SYSTEM_LED));
     lastBlink = millis();
   }
 
-  // Day/night check every 5 sec
-  static unsigned long lastLdrCheck = 0;
-  if (millis() - lastLdrCheck > 5000) {
-    int lightValue = analogRead(LDR_PIN);
-    bool nightNow = lightValue < 500;
-    if (nightNow != isNight) {
-      isNight = nightNow;
-      beep(1, 200); // Day/night change
-      autoMode = isNight; // Switch mode automatically
-      updateModeLEDs();
-    }
-    lastLdrCheck = millis();
-  }
+  // Read LDR
+  int ldrValue = analogRead(LDR_PIN);
+  bool isNight = (ldrValue < 500);
 
-  // Mode button
-  bool buttonState = digitalRead(MODE_BUTTON);
-  if (buttonPrev == HIGH && buttonState == LOW) {
+  // Mode switch
+  bool buttonState = digitalRead(BUTTON_PIN);
+  if (buttonState == LOW && prevButtonState == HIGH) {
     autoMode = !autoMode;
+    digitalWrite(AUTO_LED, autoMode);
+    digitalWrite(MANUAL_LED, !autoMode);
     beep(1, 100);
-    updateModeLEDs();
-    delay(200);
+    delay(300);
   }
-  buttonPrev = buttonState;
+  prevButtonState = buttonState;
 
-  // ---------------- AUTO MODE ----------------
-  if (autoMode && isNight) {
-    if (digitalRead(MOTION_PIN) == HIGH) {
-      digitalWrite(MOTION_LED, HIGH); // Motion indicator ON
-      beep(1, 100);
-      if (!diningOffLast) {
-        turnAllLEDs(HIGH);
-        diningOffLast = true;
-      } else {
-        digitalWrite(LED1, LOW); // Dining OFF
-        diningOffLast = false;
-        beep(1, 200);
-      }
-      lastMotion = millis();
-      delay(1000);
-    } else {
-      digitalWrite(MOTION_LED, LOW); // Motion indicator OFF
-    }
+  // IR Remote handling
+  if (IrReceiver.decode()) {
+    unsigned long code = IrReceiver.decodedIRData.decodedRawData;
+    handleRemote(code);
+    IrReceiver.resume();
   }
 
-  // ---------------- REMOTE CONTROL ----------------
-  if (irrecv.decode(&results)) {
-    Serial.println(results.value, HEX);
-    switch (results.value) {
-      case 0xFF30CF: toggleLED(LED1); beep(1,50); break; // Dining
-      case 0xFF18E7: toggleLED(LED2); beep(1,50); break;
-      case 0xFF7A85: toggleLED(LED3); beep(1,50); break;
-      case 0xFF10EF: toggleLED(LED4); beep(1,50); break;
-      case 0xFF38C7: toggleLED(LED5); beep(1,50); break;
-      case 0xFF5AA5: autoMode = !autoMode; beep(1,100); updateModeLEDs(); break; // Mode toggle
+  // Motion detection (IR proximity)
+  int motion = digitalRead(MOTION_PIN);
+  if (motion == HIGH && autoMode && isNight) {
+    digitalWrite(MOTION_LED, HIGH);
+    if (!motionDetected) {
+      motionDetected = true;
+      handleMotionEvent();
     }
-    irrecv.resume();
+  } else if (motion == LOW) {
+    digitalWrite(MOTION_LED, LOW);
+    motionDetected = false;
   }
 }
 
-// ------------------ Functions ------------------
-void updateModeLEDs() {
-  digitalWrite(GREEN_LED, autoMode);    // Green = AUTO
-  digitalWrite(YELLOW_LED, !autoMode);  // Yellow = MANUAL
+void handleMotionEvent() {
+  static bool firstTrigger = true;
+  beep(1, 80);
+
+  if (firstTrigger) {
+    allLightsOn();
+    firstTrigger = false;
+  } else {
+    // turn off only dining light
+    digitalWrite(LED_DINING, LOW);
+    beep(1, 200);
+    firstTrigger = true;
+  }
 }
 
-void toggleLED(int pin) {
+void handleRemote(unsigned long code) {
+  beep(1, 50);
+  switch (code) {
+    case REMOTE_ROOM1: toggleLight(LED_ROOM1); break;
+    case REMOTE_ROOM2: toggleLight(LED_ROOM2); break;
+    case REMOTE_ROOM3: toggleLight(LED_ROOM3); break;
+    case REMOTE_ROOM4: toggleLight(LED_ROOM4); break;
+    case REMOTE_DINING: toggleLight(LED_DINING); break;
+    case REMOTE_MODE:
+      autoMode = !autoMode;
+      digitalWrite(AUTO_LED, autoMode);
+      digitalWrite(MANUAL_LED, !autoMode);
+      beep(2, 80);
+      break;
+  }
+}
+
+void toggleLight(int pin) {
   digitalWrite(pin, !digitalRead(pin));
 }
 
-void turnAllLEDs(bool state) {
-  digitalWrite(LED1, state);
-  digitalWrite(LED2, state);
-  digitalWrite(LED3, state);
-  digitalWrite(LED4, state);
-  digitalWrite(LED5, state);
+void allLightsOn() {
+  digitalWrite(LED_ROOM1, HIGH);
+  digitalWrite(LED_ROOM2, HIGH);
+  digitalWrite(LED_ROOM3, HIGH);
+  digitalWrite(LED_ROOM4, HIGH);
+  digitalWrite(LED_DINING, HIGH);
+  lightsOn = true;
 }
 
-// Beep function: count = number of beeps, duration = ms per beep
+void allLightsOff() {
+  digitalWrite(LED_ROOM1, LOW);
+  digitalWrite(LED_ROOM2, LOW);
+  digitalWrite(LED_ROOM3, LOW);
+  digitalWrite(LED_ROOM4, LOW);
+  digitalWrite(LED_DINING, LOW);
+  lightsOn = false;
+}
+
 void beep(int count, int duration) {
-  for(int i=0; i<count; i++){
-    digitalWrite(BUZZER,HIGH);
+  for (int i = 0; i < count; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
     delay(duration);
-    digitalWrite(BUZZER,LOW);
-    delay(50);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(80);
   }
 }
