@@ -8,18 +8,18 @@ Both modes can be switched using the **push button** or **IR remote**.
 ### 🟢 AUTO MODE (Green LED ON)
 Auto mode enables **automatic light and motion control** using the LDR and IR proximity sensor.
 
-#### 🌙 Night Detection (LDR)
+####  Night Detection (LDR)
 - The LDR monitors ambient light level.
 - When light level is low (nighttime), the system becomes active.
 - During the day, all auto functions pause to save power.
 
-#### 🚶 Motion Detection (IR Proximity Sensor)
+####  Motion Detection (IR Proximity Sensor)
 - When motion is detected at night, all lights turn **ON** (first detection).
 - When motion is detected again, only the **Dining Room LED** turns **OFF** (second detection).
 - A **motion indicator LED** (red) lights up while motion is present.
 - Buzzer gives a short beep when motion is detected.
 
-#### 💡 Auto Light Rules
+####  Auto Light Rules
 | Event | Action |
 |--------|--------|
 | First motion detected (night) | Turn ON all lights + short beep |
@@ -27,17 +27,17 @@ Auto mode enables **automatic light and motion control** using the LDR and IR pr
 | No motion | Keep other lights ON |
 | Daytime | System ignores motion (power saving) |
 
-#### 🔋 Power Saving
+#### Power Saving
 - System LED blinks to show the system is alive.
 - LDR automatically disables unnecessary night logic during daytime.
 - No motion = minimal energy use.
 
 ---
 
-### 🟡 MANUAL MODE (Yellow LED ON)
+###  MANUAL MODE (Yellow LED ON)
 Manual mode allows **full control through the IR remote**.
 
-#### 🎛️ Remote Control
+####  Remote Control
 Each remote button toggles individual lights:
 | Button Code | Function |
 |--------------|-----------|
@@ -53,7 +53,7 @@ Each remote button toggles individual lights:
 
 ---
 
-### 🔔 BUZZER FEEDBACK SUMMARY
+###  BUZZER FEEDBACK SUMMARY
 | Event | Sound |
 |--------|--------|
 | Power ON | Two short beeps |
@@ -64,7 +64,7 @@ Each remote button toggles individual lights:
 
 ---
 
-### 🔵 SYSTEM INDICATORS
+###  SYSTEM INDICATORS
 | Indicator | Function |
 |------------|-----------|
 | Blue LED | System ON (blinking) |
@@ -74,7 +74,7 @@ Each remote button toggles individual lights:
 
 ---
 
-### 🧠 Overall Logic Flow
+###  Overall Logic Flow
 1. System powers ON → buzzer beeps twice → System LED blinks.  
 2. LDR checks light → decides if day or night.  
 3. If night → IR proximity sensor becomes active.  
@@ -87,7 +87,7 @@ Each remote button toggles individual lights:
 
 ---
 
-### 🪄 Example Scenario
+###  Example Scenario
 - At night, the system is in **Auto mode**.  
 - You walk into the room → **all lights turn ON**.  
 - You move again → **only dining light turns OFF**.  
